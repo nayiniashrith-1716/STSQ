@@ -1,5 +1,5 @@
 {
-  "name": "Smart Automated Traffic Management System",
-  "description": "A simulation of an automated traffic control system for a 4-way intersection. The system uses priority queues for each lane (North, South, East, West) and automatically grants the green light to the lane with the highest-priority vehicle, such as an ambulance or fire truck. The frontend features a full visual simulation with animated vehicles and traffic signals.",
+  "name": "Smart Traffic Management System Using Priority Queue",
+  "description": "A simulation of a smart traffic control system for a 4-way intersection using priority queues. The system automatically grants the green light to the lane with the highest-priority vehicle, such as an ambulance or fire truck. The frontend features a full visual simulation with animated vehicles and traffic signals.",
   "requestFramePermissions": []
 }

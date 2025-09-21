@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { UserRole } from '../types';
 import Button from './Button';
@@ -12,7 +11,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-slate-800/50 p-8 rounded-xl shadow-lg border border-slate-700 text-center animate-add-vehicle">
         <h1 className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight mb-2">
-          Smart Automated Traffic System
+          Smart Traffic Management System Using Priority Queue
         </h1>
         <p className="mt-2 text-lg text-slate-400 mb-8">
           Please select your role to proceed.
