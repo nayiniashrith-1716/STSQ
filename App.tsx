@@ -1,10 +1,12 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { VehicleType, Vehicle, Junction, JunctionId, LaneId, SignalState } from './types';
+import { VehicleType, Vehicle, Junction, JunctionId, LaneId, SignalState, UserRole } from './types';
 import { VEHICLE_PRIORITIES, JUNCTION_IDS, LANE_IDS } from './constants';
 import Header from './components/Header';
 import VehicleForm from './components/VehicleForm';
 import JunctionComponent from './components/Junction';
 import Dashboard from './components/Dashboard';
+import Login from './components/Login';
 
 const FULL_CLEARANCE_PRIORITY_THRESHOLD = 2; // Ambulance, Fire Truck
 const EMERGENCY_PRIORITY_THRESHOLD = 3; // Ambulance, Fire Truck, Police
@@ -28,14 +30,33 @@ const createInitialJunctionState = (id: JunctionId): Junction => ({
   statusMessage: "System Idle. Add vehicles to begin.",
 });
 
-const App: React.FC = () => {
-  const [junctions, setJunctions] = useState<Record<JunctionId, Junction>>(() => {
+const getInitialState = (): Record<JunctionId, Junction> => {
+    try {
+        const savedState = localStorage.getItem('trafficSystemState');
+        if (savedState) {
+            const parsedState = JSON.parse(savedState);
+            // Basic validation to ensure we're not loading a malformed state
+            if (Object.keys(parsedState).length > 0 && JUNCTION_IDS.every(id => parsedState[id])) {
+                return parsedState;
+            }
+        }
+    } catch (error) {
+        console.error("Failed to load or parse state from localStorage:", error);
+        localStorage.removeItem('trafficSystemState'); // Clear corrupted state
+    }
+    
+    // If nothing valid in local storage, create initial state
     const state: Partial<Record<JunctionId, Junction>> = {};
     for (const id of JUNCTION_IDS) {
       state[id] = createInitialJunctionState(id);
     }
     return state as Record<JunctionId, Junction>;
-  });
+}
+
+
+const App: React.FC = () => {
+  const [junctions, setJunctions] = useState<Record<JunctionId, Junction>>(getInitialState);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
   
   const [newlyAddedVehicleId, setNewlyAddedVehicleId] = useState<number | null>(null);
   const [blockSize, setBlockSize] = useState<number>(3);
@@ -45,6 +66,23 @@ const App: React.FC = () => {
   const junctionsRef = useRef(junctions);
   junctionsRef.current = junctions;
 
+  // Check for saved user role on initial load
+  useEffect(() => {
+    const savedRole = localStorage.getItem('trafficUserRole') as UserRole | null;
+    if (savedRole) {
+        setUserRole(savedRole);
+    }
+  }, []);
+
+  // Persist simulation state to localStorage on any change
+  useEffect(() => {
+    try {
+        localStorage.setItem('trafficSystemState', JSON.stringify(junctions));
+    } catch (error) {
+        console.error("Failed to save state to localStorage:", error);
+    }
+  }, [junctions]);
+
   const baseDurations = {
     cycleInterval: 4000,
     vehicleProcess: 1500,
@@ -52,6 +90,16 @@ const App: React.FC = () => {
   };
 
   const getDuration = (name: keyof typeof baseDurations) => baseDurations[name] / simulationSpeed;
+  
+  const handleLogin = (role: UserRole) => {
+    localStorage.setItem('trafficUserRole', role);
+    setUserRole(role);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('trafficUserRole');
+    setUserRole(null);
+  };
 
   const addVehicle = useCallback((vehicleType: VehicleType, junctionId: JunctionId, laneId: LaneId) => {
     const newVehicle: Vehicle = {
@@ -82,13 +130,15 @@ const App: React.FC = () => {
   }, []);
   
   const resetSimulation = useCallback(() => {
-     setJunctions(prev => {
-        const newState = {...prev};
+     setJunctions(() => {
+        const state: Partial<Record<JunctionId, Junction>> = {};
         for (const id of JUNCTION_IDS) {
-            newState[id] = createInitialJunctionState(id);
+            state[id] = createInitialJunctionState(id);
         }
-        return newState;
+        return state as Record<JunctionId, Junction>;
      });
+     // Also reset pause state on full reset
+     setIsPaused(false);
   }, []);
 
   const runSimulationCycle = useCallback((junctionId: JunctionId) => {
@@ -231,10 +281,14 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [runSimulationCycle, isPaused, simulationSpeed]);
 
+  if (!userRole) {
+    return <Login onLogin={handleLogin} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans p-4 sm:p-6 lg:p-8">
       <div className="max-w-screen-xl mx-auto">
-        <Header />
+        <Header onLogout={handleLogout} userRole={userRole} />
         <main className="mt-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
           <div className="lg:col-span-1 bg-slate-800/50 p-6 rounded-xl shadow-lg border border-slate-700 h-fit">
             <h2 className="text-2xl font-bold text-cyan-400 mb-6">Control Panel</h2>
@@ -247,6 +301,7 @@ const App: React.FC = () => {
               onReset={resetSimulation}
               simulationSpeed={simulationSpeed}
               onSpeedChange={setSimulationSpeed}
+              userRole={userRole}
             />
           </div>
           <div className="lg:col-span-2">

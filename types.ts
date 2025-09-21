@@ -1,3 +1,4 @@
+
 export enum VehicleType {
   Ambulance = 'Ambulance',
   FireTruck = 'Fire Truck',
@@ -41,3 +42,5 @@ export interface Junction {
     emergencyVehiclesCleared: number; // New
     statusMessage: string;
 }
+
+export type UserRole = 'Authority' | 'Operator';
