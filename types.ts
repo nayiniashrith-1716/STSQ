@@ -15,6 +15,14 @@ export interface Vehicle {
   laneId: LaneId;
 }
 
+export interface LogEntry {
+  timestamp: number;
+  vehicleId: number;
+  vehicleType: VehicleType;
+  laneId: LaneId;
+  waitTime: number; // in milliseconds
+}
+
 export enum SignalState {
     Red = 'red',
     Yellow = 'yellow',

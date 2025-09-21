@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { VehicleType, Vehicle, Junction, JunctionId, LaneId, SignalState, UserRole } from './types';
+import { VehicleType, Vehicle, Junction, JunctionId, LaneId, SignalState, UserRole, LogEntry } from './types';
 import { VEHICLE_PRIORITIES, JUNCTION_IDS, LANE_IDS } from './constants';
 import Header from './components/Header';
 import VehicleForm from './components/VehicleForm';
@@ -62,6 +62,8 @@ const App: React.FC = () => {
   const [blockSize, setBlockSize] = useState<number>(3);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [simulationSpeed, setSimulationSpeed] = useState<number>(1);
+  const [trafficLog, setTrafficLog] = useState<LogEntry[]>([]);
+
 
   const junctionsRef = useRef(junctions);
   junctionsRef.current = junctions;
@@ -129,17 +131,132 @@ const App: React.FC = () => {
     setTimeout(() => setNewlyAddedVehicleId(null), 500);
   }, []);
   
-  const resetSimulation = useCallback(() => {
+  const resetSimulation = useCallback((initialVehicles: Vehicle[] = []) => {
      setJunctions(() => {
-        const state: Partial<Record<JunctionId, Junction>> = {};
-        for (const id of JUNCTION_IDS) {
-            state[id] = createInitialJunctionState(id);
+        const newState = createInitialJunctionState(JUNCTION_IDS[0]);
+        if (initialVehicles.length > 0) {
+            initialVehicles.forEach(v => {
+                if(newState.lanes[v.laneId]) {
+                    newState.lanes[v.laneId].queue.push(v);
+                }
+            });
+            newState.statusMessage = `${initialVehicles.length} vehicles loaded from scenario.`;
         }
+        const state: Partial<Record<JunctionId, Junction>> = {};
+        state[JUNCTION_IDS[0]] = newState;
         return state as Record<JunctionId, Junction>;
      });
-     // Also reset pause state on full reset
+     setTrafficLog([]);
      setIsPaused(false);
   }, []);
+
+  const handleScenarioUpload = (csvContent: string) => {
+    const lines = csvContent.trim().split('\n');
+    const headerLine = lines.shift()?.trim();
+    if (!headerLine) {
+        alert('CSV file is empty.');
+        return;
+    }
+    const header = headerLine.split(',');
+
+    if (header[0]?.trim() !== 'vehicle_type' || header[1]?.trim() !== 'lane_id') {
+        alert('Invalid CSV format. Required headers: vehicle_type,lane_id');
+        return;
+    }
+
+    const vehiclesToCreate: { type: VehicleType; laneId: LaneId }[] = [];
+    for (const line of lines) {
+        if (!line.trim()) continue; // Skip empty lines
+        const [typeStr, laneStr] = line.trim().split(',');
+        const vehicleType = typeStr as VehicleType;
+        const laneId = laneStr as LaneId;
+
+        if (Object.values(VehicleType).includes(vehicleType) && LANE_IDS.includes(laneId)) {
+            vehiclesToCreate.push({ type: vehicleType, laneId: laneId });
+        } else {
+            console.warn(`Skipping invalid CSV row: ${line}`);
+        }
+    }
+    
+    if (vehiclesToCreate.length === 0) {
+        alert('No valid vehicles found in the CSV file.');
+        return;
+    }
+
+    if (!confirm(`This will reset the simulation and load ${vehiclesToCreate.length} vehicles. Proceed?`)) {
+        return;
+    }
+
+    const newVehicles: Vehicle[] = vehiclesToCreate.map(v => ({
+        id: Date.now() + Math.random(),
+        type: v.type,
+        priority: VEHICLE_PRIORITIES[v.type],
+        arrivalTime: Date.now(),
+        laneId: v.laneId,
+    }));
+    
+    resetSimulation(newVehicles);
+    alert(`Successfully loaded ${newVehicles.length} vehicles from the scenario.`);
+  };
+
+    const downloadCsv = (filename: string, content: string) => {
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    };
+
+    const createCsvContent = (headers: string[], data: (string|number)[][]): string => {
+        const headerRow = headers.join(',');
+        const rows = data.map(row => row.join(','));
+        return [headerRow, ...rows].join('\n');
+    };
+
+    const handleExportLog = () => {
+        if (trafficLog.length === 0) {
+            alert('Traffic log is empty. Let some vehicles pass first.');
+            return;
+        }
+        const headers = ['Timestamp', 'Vehicle ID', 'Vehicle Type', 'Lane', 'Wait Time (s)'];
+        const data = trafficLog.map(entry => [
+            new Date(entry.timestamp).toISOString(),
+            entry.vehicleId,
+            entry.vehicleType,
+            entry.laneId,
+            (entry.waitTime / 1000).toFixed(2),
+        ]);
+        const csvContent = createCsvContent(headers, data as (string|number)[][]);
+        downloadCsv('traffic_log.csv', csvContent);
+    };
+
+    const handleExportState = () => {
+        const allVehicles: (string | number)[][] = [];
+        const currentJunction = junctions[JUNCTION_IDS[0]];
+        for (const laneId of LANE_IDS) {
+            for (const vehicle of currentJunction.lanes[laneId].queue) {
+                allVehicles.push([
+                    laneId,
+                    vehicle.type,
+                    vehicle.priority,
+                    new Date(vehicle.arrivalTime).toISOString(),
+                ]);
+            }
+        }
+        if (allVehicles.length === 0) {
+            alert('System is empty. No state to export.');
+            return;
+        }
+        const headers = ['Lane', 'Vehicle Type', 'Priority', 'Arrival Time'];
+        const csvContent = createCsvContent(headers, allVehicles);
+        downloadCsv('system_state.csv', csvContent);
+    };
 
   const runSimulationCycle = useCallback((junctionId: JunctionId) => {
     const currentJunctions = junctionsRef.current;
@@ -173,6 +290,15 @@ const App: React.FC = () => {
             return;
         }
         const vehicle = vehiclesToClear[index];
+        const logEntry: LogEntry = {
+            timestamp: Date.now(),
+            vehicleId: vehicle.id,
+            vehicleType: vehicle.type,
+            laneId: winningLaneId,
+            waitTime: Date.now() - vehicle.arrivalTime,
+        };
+        setTrafficLog(prevLog => [...prevLog, logEntry]);
+
         setJunctions(p => {
           const currentJunction = p[junctionId];
           const isEmergency = vehicle.priority <= EMERGENCY_PRIORITY_THRESHOLD;
@@ -243,6 +369,16 @@ const App: React.FC = () => {
         setJunctions(p => {
             const currentJunction = p[junctionId];
             const isEmergency = vehicleToProcess.priority <= EMERGENCY_PRIORITY_THRESHOLD;
+            
+            const logEntry: LogEntry = {
+              timestamp: Date.now(),
+              vehicleId: vehicleToProcess.id,
+              vehicleType: vehicleToProcess.type,
+              laneId: winningLaneId!,
+              waitTime: Date.now() - vehicleToProcess.arrivalTime,
+            };
+            setTrafficLog(prevLog => [...prevLog, logEntry]);
+
             return {
                 ...p,
                 [junctionId]: { 
@@ -298,10 +434,13 @@ const App: React.FC = () => {
               onBlockSizeChange={setBlockSize}
               isPaused={isPaused}
               onTogglePause={() => setIsPaused(p => !p)}
-              onReset={resetSimulation}
+              onReset={() => resetSimulation()}
               simulationSpeed={simulationSpeed}
               onSpeedChange={setSimulationSpeed}
               userRole={userRole}
+              onScenarioUpload={handleScenarioUpload}
+              onExportLog={handleExportLog}
+              onExportState={handleExportState}
             />
           </div>
           <div className="lg:col-span-2">

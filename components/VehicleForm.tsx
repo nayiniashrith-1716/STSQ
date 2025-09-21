@@ -14,6 +14,9 @@ interface VehicleFormProps {
   simulationSpeed: number;
   onSpeedChange: (speed: number) => void;
   userRole: UserRole;
+  onScenarioUpload: (csvContent: string) => void;
+  onExportLog: () => void;
+  onExportState: () => void;
 }
 
 const VehicleForm: React.FC<VehicleFormProps> = ({ 
@@ -21,7 +24,8 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
     blockSize, onBlockSizeChange,
     isPaused, onTogglePause, onReset,
     simulationSpeed, onSpeedChange,
-    userRole
+    userRole,
+    onScenarioUpload, onExportLog, onExportState
 }) => {
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleType>(VehicleType.Car);
   const [selectedJunction, setSelectedJunction] = useState<JunctionId>('A');
@@ -32,6 +36,34 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onAddVehicle(selectedVehicle, selectedJunction, selectedLane);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const text = event.target?.result;
+            if (typeof text === 'string') {
+                onScenarioUpload(text);
+            }
+        };
+        reader.readAsText(file);
+    }
+    e.target.value = ''; // Reset file input
+  };
+
+  const handleDownloadSample = () => {
+    const sampleContent = `vehicle_type,lane_id\nCar,North\nAmbulance,East\nBus,North\nCar,West\nFire Truck,South\nPolice,North`;
+    const blob = new Blob([sampleContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "sample_scenario.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -88,6 +120,35 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
             Add Vehicle to Lane
           </Button>
         </form>
+
+        <div className="pt-6 border-t border-slate-700 space-y-4">
+            <h3 className="text-lg font-semibold text-slate-300">Data Import / Export</h3>
+            <div className="space-y-3">
+              <div>
+                  <input
+                    type="file"
+                    id="csv-upload"
+                    accept=".csv"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  <Button onClick={() => document.getElementById('csv-upload')?.click()} className="w-full">
+                    Upload Scenario (CSV)
+                  </Button>
+              </div>
+              <Button onClick={handleDownloadSample} className="w-full !bg-slate-600 hover:!bg-slate-500 text-sm">
+                  Download Sample Scenario
+              </Button>
+              <div className="flex gap-4">
+                  <Button onClick={onExportLog} className="w-full !bg-indigo-700 hover:!bg-indigo-600 text-sm">
+                      Export Log
+                  </Button>
+                  <Button onClick={onExportState} className="w-full !bg-indigo-700 hover:!bg-indigo-600 text-sm">
+                      Export State
+                  </Button>
+              </div>
+            </div>
+        </div>
         
         <div className="pt-6 border-t border-slate-700 space-y-6">
           <div>
